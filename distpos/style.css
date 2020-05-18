@@ -1,0 +1,73 @@
+/*! minireset.css v0.0.6 | MIT License | github.com/jgthms/minireset.css */html,body,p,ol,ul,li,dl,dt,dd,blockquote,figure,fieldset,legend,textarea,pre,iframe,hr,h1,h2,h3,h4,h5,h6{margin:0;padding:0}h1,h2,h3,h4,h5,h6{font-size:100%;font-weight:normal}ul{list-style:none}button,input,select,textarea{margin:0}html{box-sizing:border-box}*,*::before,*::after{box-sizing:inherit}img,video{height:auto;max-width:100%}iframe{border:0}table{border-collapse:collapse;border-spacing:0}td,th{padding:0}td:not([align]),th:not([align]){text-align:left}
+
+* {
+    font-family: Arial, sans-serif;
+}
+
+h1 {
+    font-weight: bold;
+    font-size: 2em;
+    margin-bottom: 1em;
+}
+
+h2 {
+    font-weight: bold;
+    font-size: 1.5em;
+    margin-bottom: 1em;
+}
+
+body {
+    margin: 1em;
+}
+
+fieldset {
+    padding: 0.5em;
+}
+
+
+#distpos-grid {
+    display: grid;
+    max-width: 1200px;
+    grid-template-columns: 800px auto;
+    grid-gap: 1em;
+}
+
+#distpos-canvas {
+    border: 1px solid black;
+    grid-column: 1;
+}
+
+#distpos-controls {
+    grid-column: 2;
+}
+
+label + label {
+    margin-left: 0.5em;
+}
+
+li {
+    margin-bottom: 0.5em;
+}
+
+fieldset {
+    margin-bottom: 1em;
+}
+
+#distpos-numnodes, #distpos-mindeg, #distpos-maxdeg, #distpos-movespeed, #distpos-distnoise, #distpos-obsspeed, #distpos-iterspeed {
+    width: 5em;
+}
+
+
+.twoc {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.twoc input {
+    vertical-align: middle;
+}
+
+input[type="button"] {
+    height: 2em;
+}

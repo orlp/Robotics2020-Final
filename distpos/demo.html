@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>DistPos demo</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="svd-js.min.js"></script>
+    <script src="distpos.js"></script>
+  </head>
+  <body>
+    <h1>True range multilateration demo</h1>
+    <div id="distpos-grid">
+      <canvas id="distpos-canvas" width="800" height="800"></canvas>
+      <form id="distpos-controls" onsubmit="return false;" autocomplete="off">
+        <h2>Controls</h2>
+        <ul>
+          <li>
+            <fieldset>
+              <legend>Graph structure</legend>
+              <ul>
+                <li>
+                  <label for="distpos-numnodes" class="twoc">Number of nodes:
+                    <input type="number" id="distpos-numnodes" name="numnodes" value="20" min="1" class="right">
+                  </label>
+                </li>
+                <li class="twoc">
+                  Connectivity: 
+                  <span>
+                    <label for="distpos-connectivity-1">Random</label>
+                    <input type="radio" id="distpos-connectivity-1" name="connectivity" value="random" checked>
+
+                    <label for="distpos-connectivity-2">Closest</label>
+                    <input type="radio" id="distpos-connectivity-2" name="connectivity" value="closest">
+
+                    <label for="distpos-connectivity-3">Furthest</label>
+                    <input type="radio" id="distpos-connectivity-3" name="connectivity" value="furthest">
+                  </span>
+                </li>
+                <li>
+                  <label for="distpos-mindeg" class="twoc">Min outdegree:
+                    <input type="number" id="distpos-mindeg" name="mindeg" value="2" min="1" class="right">
+                  </label>
+                </li>
+                <li>
+                  <label for="distpos-maxdeg" class="twoc">Max outdegree:
+                    <input type="number" id="distpos-maxdeg" name="maxdeg" value="4" min="1" class="right">
+                  </label>
+                </li>
+                <li class="twoc">
+                    <span></span>
+                    <input type="button" id="distpos-randagents" value="Randomize agents">
+                </li>
+              </ul>
+            </fieldset>
+
+            <fieldset>
+              <legend>Agent parameters</legend>
+              <ul>
+                <li>
+                  <label for="distpos-obsspeed" class="twoc">Observations per second:
+                    <input type="number" id="distpos-obsspeed" name="obsspeed" value="1" min="0.1" step="0.1">
+                  </label>
+                </li>
+                <li>
+                  <label for="distpos-movespeed" class="twoc">Movement speed multiplier:
+                  <input type="number" id="distpos-movespeed" name="movespeed" value="0" min="0" step="0.05">
+                </label>
+                </li>
+                <li>
+                  <label for="distpos-distnoise" class="twoc"><span>Multiplicative distance noise &sigma;<sup>2</sup>:</span>
+                  <input type="number" id="distpos-distnoise" name="distnoise" value="0" min="0" step="0.01">
+                  </label>
+                </li>
+              </ul>
+            </fieldset>
+
+            <fieldset>
+              <legend>Algorithm</legend>
+              <ul>
+                <li>
+                  <label for="distpos-iterspeed" class="twoc">SMACOF iter/s:
+                    <input type="number" id="distpos-iterspeed" name="iterspeed" value="30" min="1" step="1">
+                  </label>
+                </li>
+                <li>
+                  <label for="distpos-kalmanpos" class="twoc">Kalman filter positions:
+                  <input type="checkbox" name="kalmanpos" id="distpos-kalmanpos">
+                  </label>
+                </li>
+                <li class="twoc">
+                    <span></span>
+                    <input type="button" id="distpos-randestimate" value="Randomize estimate">
+                </li>
+              </ul>
+            </fieldset>
+
+            <fieldset>
+              <legend>Simulation</legend>
+              <ul>
+                <li>
+                  <label for="distpos-running" class="twoc">Running:
+                  <input type="checkbox" name="running" id="distpos-running" checked>
+                  </label>
+                </li>
+                <li>
+                  <label for="distpos-drawarrows" class="twoc">Draw observation arrows:
+                  <input type="checkbox" name="drawarrows" id="distpos-drawarrows" checked>
+                  </label>
+                </li>
+
+              </ul>
+            </fieldset>
+        </ul>
+      </form>
+    </div>
+  </body>
+</html>
