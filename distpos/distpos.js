@@ -130,7 +130,7 @@ var read_config = function(form, canvas) {
         obsspeed: Math.max(0.1, parseFloat(data.get('obsspeed'))),
         iterspeed: Math.max(0.1, parseFloat(data.get('iterspeed'))),
         distnoise: Math.max(0.0, parseFloat(data.get('distnoise'))),
-        weightdecay: Math.min(Math.max(0.0, parseFloat(data.get('weightdecay'))), 1.0),
+        weightpersistence: Math.min(Math.max(0.0, parseFloat(data.get('weightpersistence'))), 1.0),
         learnrate: Math.min(Math.max(0.0, parseFloat(data.get('learnrate'))), 1.0),
         running: data.get('running') !== null,
         drawarrows: data.get('drawarrows') !== null,
@@ -471,7 +471,7 @@ var distpos_demo = function() {
             var [dhat, w] = compute_dhat_w(edgelist, distlist);
             for (var i = 0; i < cfg.n; ++i) {
                 for (var j = 0; j < cfg.n; ++j) {
-                    w_t[i][j] *= cfg.weightdecay;
+                    w_t[i][j] *= cfg.weightpersistence;
 
                     if (w[i][j]) {
                         w_t[i][j] = 1;
