@@ -1,10 +1,5 @@
 var ACTOR_RADIUS = 10;
 var MOVESPEED_MULT = 20;
-console.assert	= function(cond, text){
-	if( cond )	return;
-	if( console.assert.useDebugger )	debugger;
-	throw new Error(text || "Assertion failed!");
-};
 
 var clone = function(x) { return JSON.parse(JSON.stringify(x)); }
 var clip = function(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); };
@@ -107,26 +102,6 @@ var normal_random = function() {
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-// https://stackoverflow.com/a/13903992/565635
-var kalman = function(x, P, measurement, R, Q, F, H) {
-    var HT = mT(H);
-    var y = msub(mT(measurement), mmult(H, x));
-    var S = madds(mmult(mmult(H, P), HT), R);
-    var K = mmult(mmult(P, HT), pinv(S));
-    x = madd(x, mmult(K, y));
-    P = mmult(msub(eye(F.length), mmult(K, H)), P);
-
-    x = mmult(F, x);
-    P = madd(mmult(mmult(F, P), mT(F)), Q);
-    return [x, P];
-};
-
-var kalman_xy = function(x, P, measurement, R, Q) {
-    return kalman(x, P, measurement, R, Q,
-        [[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]],
-        [[1, 0, 0, 0], [0, 1, 0, 0]]);
-};
-
 var draw_circle = function(ctx, x, y, r, fill) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 2 * Math.PI);
@@ -148,15 +123,17 @@ var read_config = function(form, canvas) {
         h: canvas.height,
         n: Math.max(0, parseInt(data.get('numnodes'))),
         connectivity: data.get('connectivity'),
+        distcalc: data.get('distcalc'),
         mindeg: mindeg,
         maxdeg: maxdeg,
         movespeed: parseFloat(data.get('movespeed')),
         obsspeed: Math.max(0.1, parseFloat(data.get('obsspeed'))),
         iterspeed: Math.max(0.1, parseFloat(data.get('iterspeed'))),
         distnoise: Math.max(0.0, parseFloat(data.get('distnoise'))),
+        weightdecay: Math.min(Math.max(0.0, parseFloat(data.get('weightdecay'))), 1.0),
+        learnrate: Math.min(Math.max(0.0, parseFloat(data.get('learnrate'))), 1.0),
         running: data.get('running') !== null,
         drawarrows: data.get('drawarrows') !== null,
-        kalmanpos: data.get('kalmanpos') !== null,
     };
 };
 
@@ -188,7 +165,7 @@ var update_actors = function(cfg, actors, dt) {
     }
 }
 
-var generate_edges = function(cfg, actors) {
+var generate_edges = function(cfg, actors, cur_estimate) {
     var degrees = [];
     while (degrees.length < cfg.n) {
         degrees.push(range_random(cfg.mindeg, cfg.maxdeg + 1));
@@ -218,8 +195,14 @@ var generate_edges = function(cfg, actors) {
             edgelist.push([]);
 
             for (var j = i + 1; j < cfg.n; ++j) {
-                var dx = actors[i].x - actors[j].x;
-                var dy = actors[i].y - actors[j].y;
+                var dx, dy;
+                if (cfg.distcalc == 'real') {
+                    dx = actors[i].x - actors[j].x;
+                    dy = actors[i].y - actors[j].y;
+                } else {
+                    dx = cur_estimate[i][0] - cur_estimate[j][0];
+                    dy = cur_estimate[i][1] - cur_estimate[j][1];
+                }
                 var dist = dx*dx + dy*dy;
                 distances.push([i, j, dist]);
             }
@@ -245,7 +228,7 @@ var generate_edges = function(cfg, actors) {
 var generate_estimate = function(cfg) {
     var estimate = [];
     for (var i = 0; i < cfg.n; ++i) {
-        estimate.push([uniform_random(0, cfg.w), uniform_random(0, cfg.h), 0, 0]);
+        estimate.push([uniform_random(0, cfg.w), uniform_random(0, cfg.h)]);
     }
     return estimate;
 }
@@ -270,16 +253,13 @@ var compute_dists = function(cfg, pos, edgelist) {
     return distlist;
 }
 
-var mds_step = function(cur_estimate, edgelist, distlist) {
-    // SMACOF algorithm.
-    // Implemented from Multidimensional Scaling by Majorization: A Review.
-    // And sample implementation in numpy from https://github.com/scikit-learn/scikit-learn/issues/6828#issuecomment-510399353.
-
+var compute_dhat_w = function(edgelist, distlist) {
     var zero_eps = 1e-9;
     var n = edgelist.length;
 
     // Transform into distance matrix.
     var dhat = zeros(n, n);
+    var w = zeros(n, n);
     for (var i = 0; i < n; ++i) {
         for (var k = 0; k < edgelist[i].length; ++k) {
             var j = edgelist[i][k];
@@ -297,44 +277,57 @@ var mds_step = function(cur_estimate, edgelist, distlist) {
 
             dhat[i][j] = d;
             dhat[j][i] = d;
+            w[i][j] = 1;
+            w[j][i] = 1;
         }
     }
+    return [dhat, w];
+}
 
+var mds_v = function(w) {
     // Compute V.
+    var n = w.length;
     var V = zeros(n, n);
     for (var i = 0; i < n; ++i) {
         for (var j = i + 1; j < n; ++j) {
-            if (dhat[i][j] > zero_eps) {
-                V[i][i] += 1;
-                if (i != j) {
-                    V[j][j] += 1;
-                    V[i][j] -= 1;
-                    V[j][i] -= 1;
-                }
+            V[i][i] += w[i][j];
+            if (i != j) {
+                V[j][j] += w[i][j];
+                V[i][j] -= w[i][j];
+                V[j][i] -= w[i][j];
             }
         }
     }
 
     // Compute pseudo-inverse.
     var Vinv = pinv(V);
+
+    return [V, Vinv];
+}
+
+var mds_step = function(cur_estimate, dhat, w, V, Vinv) {
+    // SMACOF algorithm.
+    // Implemented from Multidimensional Scaling by Majorization: A Review.
+    // And sample implementation in numpy from https://github.com/scikit-learn/scikit-learn/issues/6828#issuecomment-510399353.
+
+    var zero_eps = 1e-9;
+    var n = cur_estimate.length;
     var Y = cur_estimate;
 
     // Compute B(Y).
     var BY = zeros(n, n);
     for (var i = 0; i < n; ++i) {
         for (var j = i + 1; j < n; ++j) {
-            if (dhat[i][j] > zero_eps) {
-                var dx = cur_estimate[j][0] - cur_estimate[i][0];
-                var dy = cur_estimate[j][1] - cur_estimate[i][1];
-                var d = Math.sqrt(dx*dx + dy*dy);
-                var b = d <= zero_eps ? 0 : dhat[i][j] / d;
+            var dx = cur_estimate[j][0] - cur_estimate[i][0];
+            var dy = cur_estimate[j][1] - cur_estimate[i][1];
+            var d = Math.sqrt(dx*dx + dy*dy);
+            var b = d <= zero_eps ? 0 : dhat[i][j] / d;
 
-                BY[i][i] += b;
-                if (i != j) {
-                    BY[j][j] += b;
-                    BY[i][j] -= b;
-                    BY[j][i] -= b;
-                }
+            BY[i][i] += w[i][j]*b;
+            if (i != j) {
+                BY[j][j] += w[i][j]*b;
+                BY[i][j] -= w[i][j]*b;
+                BY[j][i] -= w[i][j]*b;
             }
         }
     }
@@ -348,7 +341,6 @@ var correct_rotate_translate = function(estimate, truth) {
     // By Olga Sorkine-Hornung and Michael Rabinovich.
     var n = estimate.length;
     var truthmat = [];
-    var orig_estmat = [];
     var estmat = [];
     var tc = [0, 0];
     var ec = [0, 0];
@@ -356,7 +348,6 @@ var correct_rotate_translate = function(estimate, truth) {
     // Compute centroids.
     for (var i = 0; i < n; ++i) {
         estmat.push([estimate[i][0], estimate[i][1]]);
-        orig_estmat.push([estimate[i][0], estimate[i][1]]);
         truthmat.push([truth[i].x, truth[i].y]);
         tc[0] += truthmat[i][0];
         tc[1] += truthmat[i][1];
@@ -390,7 +381,7 @@ var correct_rotate_translate = function(estimate, truth) {
     // console.log(det, det2);
 
     var rec = mmult(R, mT([ec]));
-    var rot_est = mmult(R, mT(orig_estmat));
+    var rot_est = mmult(R, mT(estimate));
     var trans = [tc[0] - rec[0], tc[1] - rec[1]];
     for (var i = 0; i < n; ++i) {
         rot_est[0][i] += trans[0];
@@ -412,25 +403,23 @@ var distpos_demo = function() {
 
     var cfg = read_config(form, canvas);
     var actors = generate_actors(cfg, []);
-    var obs_pos = clone(actors);
-    var edgelist = generate_edges(cfg, actors);
-    var distlist = compute_dists(cfg, obs_pos, edgelist);
-
-    var cur_estimate, cur_estimate2, cur_P, display_estimate;
+    var cur_estimate = generate_estimate(cfg);
+    var dhat_t = zeros(cfg.n, cfg.n);
+    var w_t = eye(cfg.n);
+    var arrows = [];
+    var last_t = null;
+    var t_since_last_obs = 1/cfg.obsspeed + 1e-8;
+    var t_since_last_step = 0;
 
     var randomize_estimate = function() {
         cur_estimate = generate_estimate(cfg);
-        cur_estimate2 = generate_estimate(cfg);
-        cur_P = [];
-        for (var i = 0; i < cfg.n; ++i) cur_P.push(mmults(eye(4), 1000));
-        display_estimate = correct_rotate_translate(cur_estimate, obs_pos);
+        dhat_t = zeros(cfg.n, cfg.n);
+        w_t = eye(cfg.n);
+        t_since_last_obs = 1/cfg.obsspeed + 1e-8;
     };
-    randomize_estimate();
-
 
     var randomize_agents = function() {
         actors = generate_actors(cfg, []);
-        obs_pos = clone(actors);
     };
 
     form.addEventListener('change', function() {
@@ -445,12 +434,8 @@ var distpos_demo = function() {
 
         if (cardinality_changed) {
             actors = generate_actors(cfg, actors);
-            obs_pos = clone(actors);
             randomize_estimate();
-        }
-        if (new_graph_needed) {
-            edgelist = generate_edges(cfg, actors);
-            distlist = compute_dists(cfg, obs_pos, edgelist);
+            arrows = [];
         }
     });
 
@@ -459,12 +444,11 @@ var distpos_demo = function() {
     document.getElementById("distpos-randestimate")
         .addEventListener("click", randomize_estimate, false);
 
-    var last_t = null;
-    var t_since_last_obs = 0;
-    var t_since_last_step = 0;
+    var V, Vinv;
 
     var anim = function(t) {
-        var dt = last_t !== null ? (t - last_t) / 1000 : 0;
+        t /= 1000;
+        var dt = last_t !== null ? t - last_t : 0;
         last_t = t;
 
         if (!cfg.running) dt = 0;
@@ -474,61 +458,40 @@ var distpos_demo = function() {
         t_since_last_obs += dt;
         if (t_since_last_obs > 1/cfg.obsspeed) {
             t_since_last_obs -= 1/cfg.obsspeed;
+            edgelist = generate_edges(cfg, actors, cur_estimate);
+            var distlist = compute_dists(cfg, actors, edgelist);
 
-
-            if (cfg.kalmanpos) {
-                var R = 0.1;
-                var Q = mmults(eye(4), 10);
-
-                for (var i = 0; i < cfg.n; ++i) {
-                    var r = kalman_xy(mT([cur_estimate2[i]]), cur_P[i],
-                                      [[cur_estimate[i][0], cur_estimate[i][1]]], R, Q);
-                    cur_estimate2[i] = mT(r[0])[0];
-                    cur_P[i] = r[1];
+            for (var i = 0; i < cfg.n; ++i) {
+                for (var k = 0; k < edgelist[i].length; ++k) {
+                    var j = edgelist[i][k];
+                    arrows.push({t: t, start: i, stop: j});
                 }
             }
 
+            var [dhat, w] = compute_dhat_w(edgelist, distlist);
+            for (var i = 0; i < cfg.n; ++i) {
+                for (var j = 0; j < cfg.n; ++j) {
+                    w_t[i][j] *= cfg.weightdecay;
 
-            edgelist = generate_edges(cfg, actors);
-            obs_pos = clone(actors);
-            distlist = compute_dists(cfg, obs_pos, edgelist);
+                    if (w[i][j]) {
+                        w_t[i][j] = 1;
+                        dhat_t[i][j] = cfg.learnrate * dhat[i][j] + 
+                                  (1 - cfg.learnrate) * dhat_t[i][j];
+                    }
+                }
+            }
+
+            [V, Vinv] = mds_v(w_t);
         }
         
         t_since_last_step += dt;
-        var need_display_update = false;
         while (t_since_last_step > 1/cfg.iterspeed) {
             t_since_last_step -= 1/cfg.iterspeed;
-
-        // var x = mT([[0, 0, 0, 0]]);
-        // var P = mmults(eye(4), 1000);
-        // // var R = 0.01*0.01;
-        // [x, P] = kalman_xy(x, P, [[0, 1]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0.1, 0.9]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[-0.1, 1.1]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0, 1]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0.1, 0.9]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[-0.1, 1.1]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0, 1]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0.1, 0.9]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0, 1]], R, Q);
-        // [x, P] = kalman_xy(x, P, [[0.1, 0.9]], R, Q);
-
-            var cur_estimate_pos = [];
-            for (var i = 0; i < cfg.n; ++i) {
-                cur_estimate_pos.push([cur_estimate[i][0], cur_estimate[i][1]]);
-            }
-            cur_estimate_pos = mds_step(cur_estimate_pos, edgelist, distlist);
-            need_display_update = true;
-
-            for (var i = 0; i < cfg.n; ++i) {
-                cur_estimate[i][0] = cur_estimate_pos[i][0];
-                cur_estimate[i][1] = cur_estimate_pos[i][1];
-            }
+            cur_estimate = mds_step(cur_estimate, dhat_t, w_t, V, Vinv);
         }
-        
-        display_estimate = correct_rotate_translate(cur_estimate2, obs_pos);
 
 
+        // Rendering
         ctx.clearRect(0, 0, cfg.w, cfg.h);
 
         ctx.font = "8px arial";
@@ -537,37 +500,42 @@ var distpos_demo = function() {
 
 
         if (cfg.drawarrows) {
-            var alpha = 0.2 + 0.1*Math.pow(1 - t_since_last_obs / (1/cfg.obsspeed), 2);
+            // var alpha = 0.2 + 0.1*Math.pow(1 - t_since_last_obs / (1/cfg.obsspeed), 2);
             // var alpha = 0.5 * animate(t_since_last_obs, 0.05, 1 / (1/cfg.obsspeed) - 0.05);
             // var alpha = 0.2 * animate(t_since_last_obs, 0.001, 1/cfg.obsspeed - 0.001);
-            ctx.strokeStyle = 'rgb(0, 0, 0, ' + alpha + ')';
-            ctx.fillStyle = ctx.strokeStyle;
-            for (var i = 0; i < obs_pos.length; ++i) {
-                for (var k = 0; k < edgelist[i].length; ++k) {
-                    var j = edgelist[i][k];
+            for (var i = 0; i < arrows.length; ++i) {
+                var arrow = arrows[i];
+                var start = actors[arrow.start];
+                var stop = actors[arrow.stop];
+                var dx = stop.x - start.x;
+                var dy = stop.y - start.y;
+                var dist = Math.sqrt(dx*dx + dy*dy);
 
-                    var dx = obs_pos[j].x - obs_pos[i].x;
-                    var dy = obs_pos[j].y - obs_pos[i].y;
-                    var dist = Math.sqrt(dx*dx + dy*dy);
+                var alpha = 1 / Math.cbrt(arrows.length) * animate(t - arrow.t, 0.1, 0.9);
+                ctx.strokeStyle = 'rgb(0, 0, 0, ' + alpha + ')';
+                ctx.fillStyle = ctx.strokeStyle;
 
-                    ctx.save();
-                    ctx.translate(obs_pos[i].x, obs_pos[i].y);
-                    ctx.rotate(Math.atan2(dy, dx));
-                    ctx.beginPath();
-                    ctx.moveTo(ACTOR_RADIUS, 0);
+                ctx.save();
+                ctx.translate(start.x, start.y);
+                ctx.rotate(Math.atan2(dy, dx));
+                ctx.beginPath();
+                ctx.moveTo(ACTOR_RADIUS, 0);
 
-                    var offset = ACTOR_RADIUS;
-                    ctx.lineTo(dist - offset - 10, 0);
-                    ctx.stroke();
-                    ctx.beginPath();
-                    ctx.lineTo(dist - offset - 10, -5);
-                    ctx.lineTo(dist - offset, 0);
-                    ctx.lineTo(dist - offset - 10, +5);
+                var offset = ACTOR_RADIUS;
+                ctx.lineTo(dist - offset - 10, 0);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.lineTo(dist - offset - 10, -5);
+                ctx.lineTo(dist - offset, 0);
+                ctx.lineTo(dist - offset - 10, +5);
 
-                    ctx.fill();
-                    ctx.restore();
-                }
+                ctx.fill();
+                ctx.restore();
             }
+
+            arrows = arrows.filter(function(arrow) {
+                return t - arrow.t < 1;
+            });
         }
 
         ctx.strokeStyle = 'black';
@@ -582,6 +550,7 @@ var distpos_demo = function() {
         }
 
 
+        var display_estimate = correct_rotate_translate(cur_estimate, actors);
         ctx.strokeStyle = 'black';
         ctx.fillStyle = 'black';
         ctx.textBaseline = 'bottom';

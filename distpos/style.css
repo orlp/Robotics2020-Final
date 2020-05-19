@@ -53,9 +53,6 @@ fieldset {
     margin-bottom: 1em;
 }
 
-#distpos-numnodes, #distpos-mindeg, #distpos-maxdeg, #distpos-movespeed, #distpos-distnoise, #distpos-obsspeed, #distpos-iterspeed {
-    width: 5em;
-}
 
 
 .twoc {
@@ -70,4 +67,8 @@ fieldset {
 
 input[type="button"] {
     height: 2em;
+}
+
+input[type="number"] {
+    width: 5em;
 }

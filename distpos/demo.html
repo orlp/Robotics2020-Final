@@ -8,7 +8,7 @@
     <script src="distpos.js"></script>
   </head>
   <body>
-    <h1>True range multilateration demo</h1>
+    <h1>MDS: Scaling by MAjorizing a COmplicated Function (SMACOF)</h1>
     <div id="distpos-grid">
       <canvas id="distpos-canvas" width="800" height="800"></canvas>
       <form id="distpos-controls" onsubmit="return false;" autocomplete="off">
@@ -34,6 +34,16 @@
 
                     <label for="distpos-connectivity-3">Furthest</label>
                     <input type="radio" id="distpos-connectivity-3" name="connectivity" value="furthest">
+                  </span>
+                </li>
+                <li class="twoc">
+                  Distance calculation: 
+                  <span>
+                    <label for="distpos-distcalc-1">Real</label>
+                    <input type="radio" id="distpos-distcal-1" name="distcalc" value="real" checked>
+
+                    <label for="distpos-distcalc-2">Predicted</label>
+                    <input type="radio" id="distpos-distcal-2" name="distcalc" value="predicted">
                   </span>
                 </li>
                 <li>
@@ -82,9 +92,19 @@
                     <input type="number" id="distpos-iterspeed" name="iterspeed" value="30" min="1" step="1">
                   </label>
                 </li>
+                <!-- <li> -->
+                <!--   <label for="distpos-kalmanpos" class="twoc">Kalman filter positions: -->
+                <!--   <input type="checkbox" name="kalmanpos" id="distpos-kalmanpos"> -->
+                <!--   </label> -->
+                <!-- </li> -->
                 <li>
-                  <label for="distpos-kalmanpos" class="twoc">Kalman filter positions:
-                  <input type="checkbox" name="kalmanpos" id="distpos-kalmanpos">
+                  <label for="distpos-weightdecay" class="twoc">Edge weight decay:
+                    <input type="number" id="distpos-weightdecay" name="weightdecay" min="0" max="1" value="0" step="0.001">
+                  </label>
+                </li>
+                <li>
+                  <label for="distpos-learnrate" class="twoc">Edge learning rate:
+                    <input type="number" id="distpos-learnrate" name="learnrate" min="0" max="1" value="1" step="0.001">
                   </label>
                 </li>
                 <li class="twoc">
